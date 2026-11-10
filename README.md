@@ -6,7 +6,7 @@ An always-on Now Playing bar for Spotify on macOS.
 
 The macOS Now Playing widget is great, but it lives in a menu you have to open. NowBar keeps the same
 information on screen as a bar you can put anywhere: album art, title, artist and album, a scrubber,
-and shuffle / previous / play-pause / next / repeat. It appears when Spotify opens and fades away
+shuffle / previous / play-pause / next / repeat, and **live lyrics** that follow the song. It appears when Spotify opens and fades away
 when Spotify quits. It never relaunches Spotify after you've quit it.
 
 Narrow it down and it switches to a two-line layout:
@@ -17,6 +17,15 @@ Native Swift (AppKit + SwiftUI), Apple Silicon, macOS 14 or later. Not affiliate
 
 ## Features
 
+- **Live lyrics.** The line being sung sits above the scrubber, with the next line faded underneath,
+  and lines slide up as the song moves on. When a track has word-by-word timing, the words light up
+  as they're sung. Turn lyrics off with *Show Lyrics* in the menu. When a song has no synced lyrics,
+  the menu says why.
+
+- **Album colours.** The frosted glass takes a see-through tint from the album art: a gradient of
+  its two strongest colours, plus a matching accent for the scrubber and the shuffle and repeat
+  lights. It fades across when the song changes, and grey covers get a neutral tint. Turn it off
+  with *Tint With Album Colours*. The colours are worked out on your Mac from a 32×32 copy of the art.
 - **Move** it by dragging. **Resize** it from the left or right edge for width, or the bottom edge for
   height. Everything scales with it.
 - **Seek** by clicking or dragging the scrubber. **Click the artwork** to bring Spotify to the front.
@@ -53,6 +62,17 @@ login keychain, and `build.sh` uses it automatically. The certificate only works
 made it. To sign with something else, set `NOWBAR_SIGN_IDENTITY`, either in your environment or in a
 git-ignored `scripts/local.env`.
 
+## Lyrics
+
+Spotify doesn't let other apps read its lyrics, so NowBar gets them from
+[LRCLIB](https://lrclib.net), a free, open, community-built lyrics database. For each new song it
+sends LRCLIB the title, artist, album and length. Nothing else is sent: no account, no history,
+no identifier. If there's no exact match, it searches for a synced copy of the same length (handy
+for remasters and "feat." titles). Results are kept in memory for the session. With *Show Lyrics*
+off, NowBar makes no lyric requests at all.
+
+Coverage and timing quality come from LRCLIB's contributors. You can add or fix lyrics there.
+
 ## How it works
 
 - `SpotifyClient.swift` reads Spotify through its AppleScript dictionary: one compiled script for the
@@ -62,6 +82,12 @@ git-ignored `scripts/local.env`.
   locally. Polling stops while the bar is hidden.
 - `BarWindow.swift` holds a borderless, non-activating `NSPanel` over an `NSVisualEffectView`.
   Hiding fades the panel out rather than closing it, so it stays on the desktop you put it on.
+- `Lyrics.swift` looks up lyrics on LRCLIB and parses them. It reads both LRC (`[mm:ss.xx] line`)
+  and LRCLIB's `lyricsfile` (line and word timings). The lyric line is drawn a fraction of a second
+  early, so it's already there when the singing starts.
+- `Palette.swift` picks the tint colours. It shrinks the art, groups pixels into 15° hue bands
+  (vivid pixels count most), takes the strongest band and the next one at least 45° away, and
+  clamps their brightness so white text stays readable.
 - `BarView.swift` is the SwiftUI layout. Moving and resizing work from the pointer's screen position
   rather than the window's built-in dragging, so dragging the scrubber never drags the window.
 

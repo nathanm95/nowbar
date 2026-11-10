@@ -84,13 +84,15 @@ final class BarController {
     let panel: BarPanel
     let client: SpotifyClient
     let settings: Settings
+    let lyrics: LyricsStore
     private let dragger = WindowDragger()
     private var subscriptions = Set<AnyCancellable>()
     private(set) var isShowing = false
 
-    init(client: SpotifyClient, settings: Settings) {
+    init(client: SpotifyClient, settings: Settings, lyrics: LyricsStore) {
         self.client = client
         self.settings = settings
+        self.lyrics = lyrics
         panel = BarPanel(frame: settings.frame ?? Self.defaultFrame())
 
         let effect = NSVisualEffectView()
@@ -102,7 +104,7 @@ final class BarController {
 
         dragger.window = panel
         dragger.onFinish = { [weak self] in self?.saveFrame() }
-        let hosting = BarHostingView(rootView: BarView(client: client, settings: settings, dragger: dragger))
+        let hosting = BarHostingView(rootView: BarView(client: client, settings: settings, lyrics: lyrics, dragger: dragger))
         hosting.translatesAutoresizingMaskIntoConstraints = false
         effect.addSubview(hosting)
         NSLayoutConstraint.activate([

@@ -14,6 +14,10 @@ final class Settings: ObservableObject {
     @Published var onTop: Bool { didSet { defaults.set(onTop, forKey: "onTop") } }
     /// Show on every desktop (Space). Off keeps it on one desktop.
     @Published var allDesktops: Bool { didSet { defaults.set(allDesktops, forKey: "allDesktops") } }
+    /// Show time-synced lyrics from LRCLIB above the scrubber.
+    @Published var showLyrics: Bool { didSet { defaults.set(showLyrics, forKey: "showLyrics") } }
+    /// Tint the see-through bar with colours from the album art.
+    @Published var tintFromArtwork: Bool { didSet { defaults.set(tintFromArtwork, forKey: "tintFromArtwork") } }
     /// Stop the bar being moved or resized by dragging.
     @Published var locked: Bool { didSet { defaults.set(locked, forKey: "locked") } }
 
@@ -23,10 +27,12 @@ final class Settings: ObservableObject {
     }
 
     private init() {
-        defaults.register(defaults: ["showBar": true, "onTop": true, "allDesktops": false, "locked": false])
+        defaults.register(defaults: ["showBar": true, "showLyrics": true, "tintFromArtwork": true, "onTop": true, "allDesktops": false, "locked": false])
         showBar = defaults.bool(forKey: "showBar")
         onTop = defaults.bool(forKey: "onTop")
         allDesktops = defaults.bool(forKey: "allDesktops")
         locked = defaults.bool(forKey: "locked")
+        showLyrics = defaults.bool(forKey: "showLyrics")
+        tintFromArtwork = defaults.bool(forKey: "tintFromArtwork")
     }
 }

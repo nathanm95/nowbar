@@ -18,20 +18,41 @@ enum DebugModes {
         let playing = Playback(state: .playing, track: track, position: 12, sampledAt: now,
                                shuffling: true, repeating: false)
         let art = sampleArtwork()
-        let cases: [(String, SpotifyClient, CGSize)] = [
-            ("wide", SpotifyClient(preview: playing, artwork: art), CGSize(width: 1400, height: 84)),
-            ("medium", SpotifyClient(preview: playing, artwork: art), CGSize(width: 900, height: 72)),
-            ("compact", SpotifyClient(preview: playing, artwork: art), CGSize(width: 520, height: 84)),
-            ("tall", SpotifyClient(preview: playing, artwork: art), CGSize(width: 1100, height: 120)),
+        // Sample lyrics: a line already running at 12 s (the sample position), and one with word timings.
+        let lineLyrics = LyricsStore(preview: .synced(Lyrics(lines: [
+            LyricLine(start: 10.5, end: nil, text: "Sample lyrics show up here, one line at a time", words: []),
+            LyricLine(start: 15, end: nil, text: "and the next line waits underneath", words: [])
+        ])))
+        let wordText = ["Words ", "light ", "up ", "as ", "they're ", "sung"]
+        let wordLyrics = LyricsStore(preview: .synced(Lyrics(lines: [
+            LyricLine(start: 11, end: 14, text: wordText.joined(),
+                      words: wordText.enumerated().map { LyricWord(start: 11 + Double($0.offset) * 0.45, text: $0.element) }),
+            LyricLine(start: 15, end: nil, text: "when the song has word timings", words: [])
+        ])))
+        let noLyrics = LyricsStore(preview: .notFound)
+        let sunset = sunsetArtwork()
+        let ocean = oceanArtwork()
+        let cases: [(String, SpotifyClient, LyricsStore, CGSize)] = [
+            ("wide-lyrics", SpotifyClient(preview: playing, artwork: art), lineLyrics, CGSize(width: 1400, height: 84)),
+            ("wide-words", SpotifyClient(preview: playing, artwork: art), wordLyrics, CGSize(width: 1400, height: 84)),
+            ("medium-lyrics", SpotifyClient(preview: playing, artwork: art), lineLyrics, CGSize(width: 900, height: 72)),
+            ("compact-lyrics", SpotifyClient(preview: playing, artwork: art), wordLyrics, CGSize(width: 520, height: 84)),
+            ("tint-sunset", SpotifyClient(preview: playing, artwork: sunset), wordLyrics, CGSize(width: 1400, height: 84)),
+            ("tint-ocean", SpotifyClient(preview: playing, artwork: ocean), lineLyrics, CGSize(width: 1100, height: 84)),
+            ("tint-compact", SpotifyClient(preview: playing, artwork: sunset), wordLyrics, CGSize(width: 520, height: 84)),
+            ("wide", SpotifyClient(preview: playing, artwork: art), noLyrics, CGSize(width: 1400, height: 84)),
+            ("medium", SpotifyClient(preview: playing, artwork: art), noLyrics, CGSize(width: 900, height: 72)),
+            ("compact", SpotifyClient(preview: playing, artwork: art), noLyrics, CGSize(width: 520, height: 84)),
+            ("tall", SpotifyClient(preview: playing, artwork: art), noLyrics, CGSize(width: 1100, height: 120)),
             ("paused-noart", SpotifyClient(preview: Playback(state: .paused, track: track, position: 200,
                                                               sampledAt: now, shuffling: false, repeating: true),
-                                           artwork: nil), CGSize(width: 1100, height: 84)),
-            ("nothing", SpotifyClient(preview: Playback(), artwork: nil), CGSize(width: 1100, height: 84)),
-            ("denied", SpotifyClient(preview: Playback(), artwork: nil, permission: .denied), CGSize(width: 1100, height: 84))
+                                           artwork: nil), noLyrics, CGSize(width: 1100, height: 84)),
+            ("nothing", SpotifyClient(preview: Playback(), artwork: nil), noLyrics, CGSize(width: 1100, height: 84)),
+            ("denied", SpotifyClient(preview: Playback(), artwork: nil, permission: .denied), noLyrics, CGSize(width: 1100, height: 84))
         ]
-        for (name, client, size) in cases {
+        for (name, client, lyrics, size) in cases {
             let url = dir.appendingPathComponent("bar-\(name).png")
-            if render(client: client, size: size, now: now, to: url) {
+            if render(client: client, lyrics: lyrics, size: size, now: now, to: url) {
                 print("Wrote \(url.path)")
             } else {
                 print("FAILED \(name)")
@@ -41,8 +62,8 @@ enum DebugModes {
     }
 
     @discardableResult
-    static func render(client: SpotifyClient, size: CGSize, now: Date?, to url: URL) -> Bool {
-        let view = BarView(client: client, settings: Settings.shared, dragger: nil, fixedNow: now)
+    static func render(client: SpotifyClient, lyrics: LyricsStore, size: CGSize, now: Date?, to url: URL) -> Bool {
+        let view = BarView(client: client, settings: Settings.shared, lyrics: lyrics, dragger: nil, fixedNow: now)
             .frame(width: size.width, height: size.height)
             .background(
                 RoundedRectangle(cornerRadius: BarView.cornerRadius)
@@ -58,12 +79,12 @@ enum DebugModes {
         return (try? png.write(to: url)) != nil
     }
 
-    static func attachDump(to client: SpotifyClient, arguments: [String]) {
+    static func attachDump(to client: SpotifyClient, lyrics: LyricsStore, arguments: [String]) {
         guard let index = arguments.firstIndex(of: "--dump"), index + 1 < arguments.count else { return }
         let dir = URL(fileURLWithPath: arguments[index + 1])
         try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
-        client.onRefresh = { [weak client] in
-            guard let client else { return }
+        client.onRefresh = { [weak client, weak lyrics] in
+            guard let client, let lyrics else { return }
             let p = client.playback
             let lines = [
                 "time: \(Date())",
@@ -79,10 +100,50 @@ enum DebugModes {
                 "repeating: \(p.repeating)",
                 "artworkURL: \(p.track?.artworkURL?.absoluteString ?? "-")",
                 "raw: \(client.lastScriptResult)",
+                "lyrics: \(Self.describe(lyrics.status, at: p.position(at: Date())))",
                 "artwork: \(client.artwork.map { "\(Int($0.size.width))x\(Int($0.size.height))" } ?? "none")"
             ]
             try? lines.joined(separator: "\n").write(to: dir.appendingPathComponent("state.txt"), atomically: true, encoding: .utf8)
-            render(client: client, size: CGSize(width: 1100, height: 84), now: nil, to: dir.appendingPathComponent("bar.png"))
+            render(client: client, lyrics: lyrics, size: CGSize(width: 1100, height: 84), now: Date(), to: dir.appendingPathComponent("bar.png"))
+        }
+    }
+
+    private static func describe(_ status: LyricsStatus, at time: Double) -> String {
+        guard case .synced(let lyrics) = status else { return "\(status)" }
+        let index = lyrics.lineIndex(at: time + LyricsView.lead)
+        let line = index.map { lyrics.lines[$0].text } ?? "(before first line)"
+        return "synced, \(lyrics.lines.count) lines, word timing \(lyrics.hasWordTiming), now: \(line)"
+    }
+
+    /// A stand-in cover with strong colours: a purple-to-orange sky with a pale sun.
+    private static func sunsetArtwork() -> NSImage {
+        NSImage(size: NSSize(width: 300, height: 300), flipped: false) { rect in
+            NSGradient(colors: [NSColor(srgbRed: 0.98, green: 0.55, blue: 0.2, alpha: 1),
+                                NSColor(srgbRed: 0.85, green: 0.25, blue: 0.45, alpha: 1),
+                                NSColor(srgbRed: 0.3, green: 0.12, blue: 0.5, alpha: 1)])?.draw(in: rect, angle: 90)
+            NSColor(srgbRed: 1, green: 0.88, blue: 0.6, alpha: 1).setFill()
+            NSBezierPath(ovalIn: NSRect(x: 95, y: 70, width: 110, height: 110)).fill()
+            NSColor(srgbRed: 0.12, green: 0.05, blue: 0.2, alpha: 1).setFill()
+            NSRect(x: 0, y: 0, width: 300, height: 80).fill()
+            return true
+        }
+    }
+
+    /// A stand-in cover in blues and teals.
+    private static func oceanArtwork() -> NSImage {
+        NSImage(size: NSSize(width: 300, height: 300), flipped: false) { rect in
+            NSGradient(colors: [NSColor(srgbRed: 0.05, green: 0.15, blue: 0.35, alpha: 1),
+                                NSColor(srgbRed: 0.1, green: 0.55, blue: 0.65, alpha: 1)])?.draw(in: rect, angle: 90)
+            NSColor(white: 1, alpha: 0.8).setStroke()
+            for row in 0..<6 {
+                let path = NSBezierPath()
+                path.lineWidth = 4
+                path.move(to: NSPoint(x: 0, y: 40 + row * 40))
+                path.curve(to: NSPoint(x: 300, y: 40 + row * 40), controlPoint1: NSPoint(x: 100, y: 70 + row * 40),
+                           controlPoint2: NSPoint(x: 200, y: 10 + row * 40))
+                path.stroke()
+            }
+            return true
         }
     }
 

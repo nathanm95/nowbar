@@ -48,7 +48,14 @@ final class SpotifyClient: ObservableObject {
 
     @Published private(set) var isRunning = false
     @Published private(set) var playback = Playback()
-    @Published private(set) var artwork: NSImage?
+    @Published private(set) var artwork: NSImage? {
+        didSet {
+            guard artwork !== oldValue else { return }
+            palette = artwork.flatMap(PaletteExtractor.palette)
+        }
+    }
+    /// Colours from the current album art, for the bar's tint.
+    @Published private(set) var palette: ArtworkPalette?
     @Published private(set) var permission: AutomationPermission = .unknown
 
     /// True while the bar is on screen. Polling only runs while active.
@@ -87,6 +94,7 @@ final class SpotifyClient: ObservableObject {
         isRunning = true
         self.playback = playback
         self.artwork = artwork
+        self.palette = artwork.flatMap(PaletteExtractor.palette)
         self.permission = permission
     }
 

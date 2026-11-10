@@ -6,14 +6,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private let settings = Settings.shared
     private var client: SpotifyClient!
     private var bar: BarController!
+    private var lyrics: LyricsStore!
     private var statusItem: NSStatusItem?
     private var screenChangeCount = 0
     private var rightClickMonitor: Any?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         client = SpotifyClient()
-        bar = BarController(client: client, settings: settings)
-        DebugModes.attachDump(to: client, arguments: CommandLine.arguments)
+        lyrics = LyricsStore(client: client, settings: settings)
+        bar = BarController(client: client, settings: settings, lyrics: lyrics)
+        DebugModes.attachDump(to: client, lyrics: lyrics, arguments: CommandLine.arguments)
         makeStatusItem()
         makeMainMenu()
 
@@ -112,6 +114,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         menu.addItem(.separator())
 
         menu.addItem(item("Show Bar When Spotify Is Open", #selector(toggleShowBar), checked: settings.showBar))
+        menu.addItem(item("Show Lyrics", #selector(toggleLyrics), checked: settings.showLyrics))
+        if let note = lyricsNote() {
+            let line = NSMenuItem(title: note, action: nil, keyEquivalent: "")
+            line.isEnabled = false
+            line.indentationLevel = 1
+            menu.addItem(line)
+        }
+        menu.addItem(item("Tint With Album Colours", #selector(toggleTint), checked: settings.tintFromArtwork))
         menu.addItem(.separator())
 
         menu.addItem(header("Position"))
@@ -157,6 +167,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         return item(title.count > 60 ? String(title.prefix(59)) + "…" : title, #selector(openSpotify))
     }
 
+    /// Why lyrics aren't showing for this song, if they aren't.
+    private func lyricsNote() -> String? {
+        switch lyrics.status {
+        case .loading: return "Looking for lyrics…"
+        case .unsynced: return "No synced lyrics for this song"
+        case .notFound: return "No lyrics found for this song"
+        case .instrumental: return "Instrumental"
+        case .failed: return "Couldn't reach LRCLIB, trying again"
+        case .synced, .off, .idle: return nil
+        }
+    }
+
     private func item(_ title: String, _ action: Selector, checked: Bool? = nil, key: String = "") -> NSMenuItem {
         let item = NSMenuItem(title: title, action: action, keyEquivalent: key)
         item.target = self
@@ -174,6 +196,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     // MARK: - Actions
 
     @objc private func toggleShowBar() { settings.showBar.toggle() }
+    @objc private func toggleLyrics() { settings.showLyrics.toggle() }
+    @objc private func toggleTint() { settings.tintFromArtwork.toggle() }
     @objc private func setOnTop() { settings.onTop = true }
     @objc private func setBehind() { settings.onTop = false }
     @objc private func toggleAllDesktops() { settings.allDesktops.toggle() }
